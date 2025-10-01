@@ -27,21 +27,25 @@ def query_ai(prompt, model="openrouter/auto"):
     """Send query to AI and return response."""
     try:
         client = get_client()
+        print("🤔 Thinking...")  # Show user that processing is happening
         completion = client.chat.completions.create(
             model=model,
             max_tokens=1000,  # Limit tokens to save credits
             messages=[{"role": "user", "content": prompt}]
         )
         return completion.choices[0].message.content
+    except KeyboardInterrupt:
+        return "\n Request cancelled by user (Ctrl+C)"
     except Exception as e:
         return f"Error: {str(e)}"
 
 
 def main():
     """Main CLI function."""
-    if len(sys.argv) < 2:
+
+    if len(sys.argv) < 2 or sys.argv[-1] == "-h":
         print("Usage: tgpt <your question>")
-        print("Example: tgpt 'What is the capital of France?'")
+        print("Example: tgpt 'What is the capital of India?'")
         sys.exit(1)
     
     # Join all arguments as the query
@@ -53,4 +57,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n Action terminated by user")
+        sys.exit(0)

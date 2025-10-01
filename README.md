@@ -114,7 +114,14 @@ tgpt What is machine learning
 tgpt "How do I set up a React project with TypeScript and Tailwind CSS?"
 ```
 
-## Configuration
+## Updating
+
+Once you update the code run 
+```bash
+   chmod +x $(pwd)/update-tgpt.sh
+   ./update-tgpt.sh
+```
+
 
 ### Environment Variables
 
