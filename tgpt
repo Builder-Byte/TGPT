@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""
+tgpt - Terminal GPT CLI tool
+Quick access to AI from anywhere in your terminal
+"""
+
+import os
+import sys
+from openai import OpenAI
+
+
+def get_client():
+    """Get OpenAI client with API key."""
+    api_key = os.getenv('OPENROUTER_API_KEY')
+    if not api_key:
+        print("Error: OPENROUTER_API_KEY not set. Please run:")
+        print("export OPENROUTER_API_KEY='your-key'")
+        sys.exit(1)
+    
+    return OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+
+
+def query_ai(prompt, model="openrouter/auto"):
+    """Send query to AI and return response."""
+    try:
+        client = get_client()
+        completion = client.chat.completions.create(
+            model=model,
+            max_tokens=1000,  # Limit tokens to save credits
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+def main():
+    """Main CLI function."""
+    if len(sys.argv) < 2:
+        print("Usage: tgpt <your question>")
+        print("Example: tgpt 'What is the capital of France?'")
+        sys.exit(1)
+    
+    # Join all arguments as the query
+    query = ' '.join(sys.argv[1:])
+    
+    # Send query and print response
+    response = query_ai(query)
+    print(response)
+
+
+if __name__ == "__main__":
+    main()
