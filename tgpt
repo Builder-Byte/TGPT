@@ -23,36 +23,74 @@ def get_client():
     )
 
 
-def query_ai(prompt, model="openrouter/auto"):
+def query_ai(prompt, model="openrouter/auto", long_answer=False):
     """Send query to AI and return response."""
     try:
         client = get_client()
+        
+        # Modify prompt based on answer length preference
+        if long_answer:
+            final_prompt = f"Give a detailed, comprehensive explanation: {prompt}"
+        else:
+            final_prompt = f"Give a brief, concise answer in 1-2 sentences or a short paragraph: {prompt}"
+        
         print("🤔 Thinking...")  # Show user that processing is happening
         completion = client.chat.completions.create(
             model=model,
             max_tokens=1000,  # Limit tokens to save credits
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": final_prompt}]
         )
         return completion.choices[0].message.content
     except KeyboardInterrupt:
-        return "\n Request cancelled by user (Ctrl+C)"
+        return "\n⚠️ Request cancelled by user (Ctrl+C)"
     except Exception as e:
         return f"Error: {str(e)}"
 
 
 def main():
     """Main CLI function."""
-
-    if len(sys.argv) < 2 or sys.argv[-1] == "-h":
-        print("Usage: tgpt <your question>")
-        print("Example: tgpt 'What is the capital of India?'")
+    
+    if len(sys.argv) < 2:
+        print("Usage: tgpt [options] <your question>")
+        print("Options:")
+        print("  -l    Give long, detailed answers")
+        print("  -h    Show this help message")
+        print("\nExamples:")
+        print("  tgpt 'What is Python?'           # Short answer")
+        print("  tgpt -l 'What is Python?'        # Long answer")
         sys.exit(1)
     
-    # Join all arguments as the query
-    query = ' '.join(sys.argv[1:])
+    # Parse arguments
+    long_answer = False
+    query_parts = []
+    
+    for arg in sys.argv[1:]:
+        if arg == "-l":
+            long_answer = True
+        elif arg == "-h":
+            print("Usage: tgpt [options] <your question>")
+            print("Options:")
+            print("  -l    Give long, detailed answers")
+            print("  -h    Show this help message")
+            print("\nExamples:")
+            print("  tgpt 'What is Python?'           # Short answer (default)")
+            print("  tgpt -l 'What is Python?'        # Long answer")
+            print("\nBy default, tgpt gives brief, concise answers.")
+            print("Use -l flag for detailed explanations.")
+            sys.exit(0)
+        else:
+            query_parts.append(arg)
+    
+    if not query_parts:
+        print("Error: No query provided")
+        print("Usage: tgpt [options] <your question>")
+        sys.exit(1)
+    
+    # Join all non-flag arguments as the query
+    query = ' '.join(query_parts)
     
     # Send query and print response
-    response = query_ai(query)
+    response = query_ai(query, long_answer=long_answer)
     print(response)
 
 

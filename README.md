@@ -92,36 +92,80 @@ ln -sf $(pwd)/tgpt ~/.local/bin/tgpt
 tgpt "your question here"
 ```
 
+### Command Line Flags
+
+The `tgpt` command supports several flags to customize the response format:
+
+| Flag | Description | Example |
+|------|-------------|---------|
+| **(default)** | Short, concise answers (1-2 sentences or brief paragraph) | `tgpt "What is Python?"` |
+| `-l` | Long, detailed explanations | `tgpt -l "What is Python?"` |
+| `-h`, `--help` | Show help message and usage examples | `tgpt -h` |
+
+### Response Length Control
+
+- **Default (Short)**: Gives brief, concise answers perfect for quick terminal queries
+- **Long (`-l`)**: Provides detailed, comprehensive explanations when you need more context
+
 ### Examples
 
 ```bash
-# Simple questions
+# Short answers (default behavior)
 tgpt "What is the capital of France?"
+# Returns: Brief answer like "Paris is the capital of France."
+
+tgpt "What is Python?"
+# Returns: Short paragraph about Python basics
+
+# Long answers (detailed explanations)
+tgpt -l "What is Python?"
+# Returns: Comprehensive explanation covering history, features, use cases, etc.
+
+tgpt -l "Explain machine learning"
+# Returns: Detailed explanation of ML concepts, types, applications
 
 # Programming help
 tgpt "How do I create a Python virtual environment?"
+# Returns: Brief command and basic steps
 
-# Explanations
-tgpt "Explain the difference between git merge and git rebase"
+tgpt -l "How do I create a Python virtual environment?"
+# Returns: Detailed explanation with multiple methods, best practices
 
 # Code generation
 tgpt "Write a bash script to backup a directory"
+# Returns: Simple script with basic functionality
 
-# Multiple words (no quotes needed for simple questions)
-tgpt What is machine learning
+tgpt -l "Write a bash script to backup a directory"
+# Returns: Comprehensive script with error handling, logging, options
 
-# Complex questions (use quotes to be safe)
-tgpt "How do I set up a React project with TypeScript and Tailwind CSS?"
+# Complex questions
+tgpt "React with TypeScript setup"
+# Returns: Basic setup steps
+
+tgpt -l "How do I set up a React project with TypeScript and Tailwind CSS?"
+# Returns: Detailed step-by-step guide with explanations
+
+# Help and usage
+tgpt -h
+# Shows usage instructions and examples
 ```
+
+### Keyboard Interrupts
+
+The tool handles Ctrl+C gracefully:
+- Shows "🤔 Thinking..." while processing requests
+- Press Ctrl+C to cancel ongoing requests
+- Displays user-friendly termination messages
 
 ## Updating
 
 Once you update the code run 
 ```bash
-   chmod +x $(pwd)/update-tgpt.sh
-   ./update-tgpt.sh
+chmod +x $(pwd)/update-tgpt.sh
+./update-tgpt.sh
 ```
 
+## Configuration
 
 ### Environment Variables
 
@@ -183,11 +227,20 @@ To test if everything is set up correctly:
 # Check if tgpt is accessible
 which tgpt
 
-# Test with a simple query
+# Test with a simple query (short answer)
 tgpt "hello"
+
+# Test with long answer flag
+tgpt -l "hello"
+
+# Check help system
+tgpt -h
 
 # Check your environment variable
 echo $OPENROUTER_API_KEY
+
+# Test keyboard interrupt handling
+tgpt "long question" # Then press Ctrl+C to test cancellation
 ```
 
 ## File Structure
@@ -217,6 +270,14 @@ Feel free to submit issues and pull requests to improve this tool!
 This project is open source. Feel free to use and modify as needed.
 
 ## Changelog
+
+### v1.1 (Current)
+- ✨ Added `-l` flag for long, detailed answers
+- 🎯 Default behavior now gives short, concise responses
+- 🛡️ Added keyboard interrupt handling (Ctrl+C)
+- 📋 Added help system with `-h` flag
+- 💬 Added "Thinking..." indicator during API calls
+- 🚦 Graceful termination messages
 
 ### v1.0
 - Initial release
