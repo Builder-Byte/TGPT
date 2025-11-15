@@ -23,7 +23,7 @@ A simple command-line interface to interact with AI models from anywhere in your
 
 ```bash
 # Clone this repository or create the files manually
-git clone [<your-repo-url>](https://github.com/Builder-Byte/TGPT)
+git clone https://github.com/Builder-Byte/TGPT
 cd terminal_gpt
 ```
 
