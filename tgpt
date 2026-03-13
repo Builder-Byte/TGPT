@@ -1,98 +1,154 @@
 #!/usr/bin/env python3
 """
 tgpt - Terminal GPT CLI tool
-Quick access to AI from anywhere in your terminal
+Quick access to AI from anywhere in your terminal (powered by Ollama)
 """
-
-import os
 import sys
-from openai import OpenAI
+import json
+import urllib.request
+import urllib.error
+import os
+OLLAMA_BASE_URL = "http://localhost:11434"
+DEFAULT_MODEL = "qwen3-next:80b-cloud"
 
-
-def get_client():
-    """Get OpenAI client with API key."""
-    api_key = os.getenv('OPENROUTER_API_KEY')
-    if not api_key:
-        print("Error: OPENROUTER_API_KEY not set. Please run:")
-        print("export OPENROUTER_API_KEY='your-key'")
-        sys.exit(1)
-    
-    return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
-    )
-
-
-def query_ai(prompt, model="openrouter/auto", long_answer=False):
-    """Send query to AI and return response."""
+def get_available_models():
+    """Fetch available models from Ollama."""
     try:
-        client = get_client()
-        
-        # Modify prompt based on answer length preference
+        req = urllib.request.urlopen(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+        data = json.loads(req.read().decode())
+        return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
+
+def check_ollama_running():
+    """Check if Ollama is running."""
+    try:
+        urllib.request.urlopen(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+        return True
+    except Exception:
+        return False
+
+def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
+    """Send query to Ollama and return response."""
+    try:
         if long_answer:
             final_prompt = f"Give a detailed, comprehensive explanation: {prompt}"
         else:
             final_prompt = f"Give a brief, concise answer in 1-2 sentences or a short paragraph: {prompt}"
-        
-        print("🤔 Thinking...")  # Show user that processing is happening
-        completion = client.chat.completions.create(
-            model=model,
-            max_tokens=1000,  # Limit tokens to save credits
-            messages=[{"role": "user", "content": final_prompt}]
+
+        print("🤔 Thinking...")
+
+        payload = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": final_prompt}],
+            "stream": False,
+            "options": {
+                "num_predict": 1000  # Equivalent to max_tokens
+            }
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{OLLAMA_BASE_URL}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
         )
-        return completion.choices[0].message.content
+
+        with urllib.request.urlopen(req, timeout=120) as response:
+            data = json.loads(response.read().decode())
+            return data["message"]["content"]
+
     except KeyboardInterrupt:
-        return "\n⚠️ Request cancelled by user (Ctrl+C)"
+        return "\n⚠️  Request cancelled by user (Ctrl+C)"
+    except urllib.error.URLError as e:
+        return (
+            f"Error: Cannot connect to Ollama at {OLLAMA_BASE_URL}\n"
+            f"Make sure Ollama is running: ollama serve"
+        )
     except Exception as e:
         return f"Error: {str(e)}"
 
-
 def main():
     """Main CLI function."""
-    
+
     if len(sys.argv) < 2:
         print("Usage: tgpt [options] <your question>")
         print("Options:")
-        print("  -l    Give long, detailed answers")
-        print("  -h    Show this help message")
+        print("  -l              Give long, detailed answers")
+        print("  -m <model>      Specify Ollama model (default: llama3.2)")
+        print("  --list-models   Show available Ollama models")
+        print("  -h              Show this help message")
         print("\nExamples:")
-        print("  tgpt 'What is Python?'           # Short answer")
-        print("  tgpt -l 'What is Python?'        # Long answer")
+        print("  tgpt 'What is Python?'                    # Short answer")
+        print("  tgpt -l 'What is Python?'                 # Long answer")
+        print("  tgpt -m mistral 'What is Python?'         # Use specific model")
         sys.exit(1)
-    
-    # Parse arguments
+
     long_answer = False
+    model = DEFAULT_MODEL
     query_parts = []
-    
-    for arg in sys.argv[1:]:
+    skip_next = False
+
+    args = sys.argv[1:]
+
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+
         if arg == "-l":
             long_answer = True
         elif arg == "-h":
             print("Usage: tgpt [options] <your question>")
             print("Options:")
-            print("  -l    Give long, detailed answers")
-            print("  -h    Show this help message")
+            print("  -l              Give long, detailed answers")
+            print("  -m <model>      Specify Ollama model (default: llama3.2)")
+            print("  --list-models   Show available Ollama models")
+            print("  -h              Show this help message")
             print("\nExamples:")
-            print("  tgpt 'What is Python?'           # Short answer (default)")
-            print("  tgpt -l 'What is Python?'        # Long answer")
+            print("  tgpt 'What is Python?'                    # Short answer (default)")
+            print("  tgpt -l 'What is Python?'                 # Long answer")
+            print("  tgpt -m mistral 'Explain recursion'       # Use specific model")
             print("\nBy default, tgpt gives brief, concise answers.")
             print("Use -l flag for detailed explanations.")
             sys.exit(0)
+        elif arg == "--list-models":
+            models = get_available_models()
+            if models:
+                print("Available Ollama models:")
+                for m in models:
+                    marker = " (default)" if m.startswith(DEFAULT_MODEL) else ""
+                    print(f"  • {m}{marker}")
+            else:
+                print("No models found or Ollama is not running.")
+                print("Pull a model with: ollama pull llama3.2")
+            sys.exit(0)
+        elif arg == "-m":
+            if i + 1 < len(args):
+                model = args[i + 1]
+                skip_next = True
+            else:
+                print("Error: -m requires a model name")
+                print("Example: tgpt -m mistral 'Your question'")
+                sys.exit(1)
         else:
             query_parts.append(arg)
-    
+
     if not query_parts:
         print("Error: No query provided")
         print("Usage: tgpt [options] <your question>")
         sys.exit(1)
-    
-    # Join all non-flag arguments as the query
-    query = ' '.join(query_parts)
-    
-    # Send query and print response
-    response = query_ai(query, long_answer=long_answer)
-    print(response)
 
+    # Check Ollama is running before querying
+    if not check_ollama_running():
+        print(f"Error: Ollama is not running at {OLLAMA_BASE_URL}")
+        print("Starting with: ollama serve")
+        os.system("ollama serve")
+
+
+    query = ' '.join(query_parts)
+    response = query_ai(query, model=model, long_answer=long_answer)
+    print(response)
 
 if __name__ == "__main__":
     try:
