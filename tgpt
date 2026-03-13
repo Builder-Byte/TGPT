@@ -7,7 +7,7 @@ import sys
 import json
 import urllib.request
 import urllib.error
-import os
+
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3-next:80b-cloud"
 
@@ -29,21 +29,21 @@ def check_ollama_running():
         return False
 
 def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
-    """Send query to Ollama and return response."""
+    """Send query to Ollama and stream response."""
     try:
         if long_answer:
             final_prompt = f"Give a detailed, comprehensive explanation: {prompt}"
         else:
             final_prompt = f"Give a brief, concise answer in 1-2 sentences or a short paragraph: {prompt}"
 
-        print("🤔 Thinking...")
+        print("🤔 Thinking...\n")
 
         payload = json.dumps({
             "model": model,
             "messages": [{"role": "user", "content": final_prompt}],
-            "stream": False,
+            "stream": True,
             "options": {
-                "num_predict": 1000  # Equivalent to max_tokens
+                "num_predict": 4096 if long_answer else 1000
             }
         }).encode()
 
@@ -54,19 +54,28 @@ def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
             method="POST"
         )
 
-        with urllib.request.urlopen(req, timeout=120) as response:
-            data = json.loads(response.read().decode())
-            return data["message"]["content"]
+        # Stream response — no timeout needed, chunks arrive continuously
+        with urllib.request.urlopen(req) as response:
+            for line in response:
+                if not line.strip():
+                    continue
+                chunk = json.loads(line.decode())
+                token = chunk.get("message", {}).get("content", "")
+                if token:
+                    print(token, end="", flush=True)
+                if chunk.get("done"):
+                    print()  # newline after final token
+                    break
 
     except KeyboardInterrupt:
-        return "\n⚠️  Request cancelled by user (Ctrl+C)"
-    except urllib.error.URLError as e:
-        return (
+        print("\n\n⚠️  Request cancelled by user (Ctrl+C)")
+    except urllib.error.URLError:
+        print(
             f"Error: Cannot connect to Ollama at {OLLAMA_BASE_URL}\n"
             f"Make sure Ollama is running: ollama serve"
         )
     except Exception as e:
-        return f"Error: {str(e)}"
+        print(f"Error: {str(e)}")
 
 def main():
     """Main CLI function."""
@@ -142,13 +151,11 @@ def main():
     # Check Ollama is running before querying
     if not check_ollama_running():
         print(f"Error: Ollama is not running at {OLLAMA_BASE_URL}")
-        print("Starting with: ollama serve")
-        os.system("ollama serve")
-
+        print("Start it with: ollama serve")
+        sys.exit(1)
 
     query = ' '.join(query_parts)
-    response = query_ai(query, model=model, long_answer=long_answer)
-    print(response)
+    query_ai(query, model=model, long_answer=long_answer)
 
 if __name__ == "__main__":
     try:
