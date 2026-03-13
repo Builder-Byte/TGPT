@@ -4,7 +4,11 @@ tgpt - Terminal GPT CLI tool
 Quick access to AI from anywhere in your terminal (powered by Ollama)
 """
 import sys
+import os
 import json
+import shutil
+import tempfile
+import subprocess
 import urllib.request
 import urllib.error
 
@@ -20,6 +24,14 @@ except ImportError:
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3-next:80b-cloud"
+
+
+def get_terminal_width(default=100):
+    """Best-effort terminal width that works on older Python versions."""
+    try:
+        return shutil.get_terminal_size((default, 40)).columns
+    except Exception:
+        return default
 
 def get_available_models():
     """Fetch available models from Ollama."""
@@ -38,7 +50,60 @@ def check_ollama_running():
     except Exception:
         return False
 
-def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
+def render_output(text, long_answer=False):
+    """Render text, using less pager for long answers."""
+    if long_answer and shutil.which("less"):
+        # Render rich markdown to string with forced width
+        if RICH_AVAILABLE:
+            from io import StringIO
+            from rich.console import Console as RConsole
+            buf = StringIO()
+            tmp_console = RConsole(
+                file=buf,
+                force_terminal=True,
+                force_jupyter=False,
+                width=get_terminal_width(),
+            )
+            tmp_console.print(Markdown(text))
+            rendered = buf.getvalue()
+        else:
+            rendered = text
+
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.txt', delete=False, encoding='utf-8'
+        ) as f:
+            f.write(rendered)
+            tmp_path = f.name
+
+        tty_handle = None
+        try:
+            try:
+                tty_handle = open("/dev/tty")
+            except OSError:
+                tty_handle = None
+
+            if tty_handle:
+                subprocess.run(
+                    ["less", "-R", "--quit-if-one-screen", "--no-init", tmp_path],
+                    stdin=tty_handle,
+                )
+            else:
+                # No controlling TTY (e.g., running in a non-interactive shell); fall back to stdout
+                if RICH_AVAILABLE:
+                    console.print(Markdown(text))
+                else:
+                    print(text)
+        finally:
+            if tty_handle:
+                tty_handle.close()
+            os.unlink(tmp_path)
+
+    elif RICH_AVAILABLE:
+        console.print(Markdown(text))
+    else:
+        print(text)
+
+def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False, debug=False):
     """Send query to Ollama, stream into buffer, then render as markdown."""
     try:
         if long_answer:
@@ -63,37 +128,82 @@ def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
         )
 
         full_response = []
+        thinking_response = []
 
-        # Stream into buffer while showing a spinner
         spinner = Spinner("dots", text=" Thinking...") if RICH_AVAILABLE else None
         with (Live(spinner, refresh_per_second=10) if RICH_AVAILABLE else open("/dev/null")) as live:
             with urllib.request.urlopen(req) as response:
                 for line in response:
                     if not line.strip():
                         continue
-                    chunk = json.loads(line.decode())
-                    token = chunk.get("message", {}).get("content", "")
+
+                    try:
+                        chunk = json.loads(line.decode())
+                    except json.JSONDecodeError as e:
+                        print(f"\nError: Failed to parse response chunk: {e}")
+                        print(f"  Raw line: {line.decode()!r}")
+                        continue
+
+                    if debug:
+                        print(f"\n[DEBUG] chunk keys: {list(chunk.keys())}")
+                        msg = chunk.get("message", {})
+                        print(f"[DEBUG] message keys: {list(msg.keys())}")
+                        print(f"[DEBUG] message: {msg}")
+
+                    if "error" in chunk:
+                        print(f"\nOllama error: {chunk['error']}")
+                        return
+
+                    msg = chunk.get("message", {})
+
+                    thinking = msg.get("thinking", "")
+                    if thinking:
+                        thinking_response.append(thinking)
+
+                    token = msg.get("content", "")
                     if token:
                         full_response.append(token)
+
                     if chunk.get("done"):
+                        done_reason = chunk.get("done_reason", "")
+                        if done_reason and done_reason != "stop":
+                            print(f"\n⚠️  Generation stopped early: {done_reason}")
                         break
 
-        # Render the full response
-        text = "".join(full_response)
-        if RICH_AVAILABLE:
-            console.print(Markdown(text))
-        else:
-            print(text)
+        text = "".join(full_response).strip()
+        thinking_text = "".join(thinking_response).strip()
+
+        if not text and not thinking_text:
+            print("Error: Model returned an empty response.")
+            print(f"  Model : {model}")
+            print(f"  Prompt: {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
+            print("Tip: Run 'tgpt --list-models' to verify the model is loaded.")
+            print("Tip: Run with --debug to inspect raw chunks from Ollama.")
+            return
+
+        if not text and thinking_text:
+            print("⚠️  Model only returned thinking tokens (no final answer).")
+            print("    Showing thinking output instead:\n")
+            text = thinking_text
+
+        render_output(text, long_answer=long_answer)
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Request cancelled by user (Ctrl+C)")
-    except urllib.error.URLError:
-        print(
-            f"Error: Cannot connect to Ollama at {OLLAMA_BASE_URL}\n"
-            f"Make sure Ollama is running: ollama serve"
-        )
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        print(f"HTTP Error {e.code}: {e.reason}")
+        try:
+            err_json = json.loads(body)
+            print(f"  Ollama says: {err_json.get('error', body)}")
+        except json.JSONDecodeError:
+            print(f"  Response body: {body}")
+    except urllib.error.URLError as e:
+        print(f"Error: Cannot connect to Ollama at {OLLAMA_BASE_URL}")
+        print(f"  Reason: {e.reason}")
+        print("  Make sure Ollama is running: ollama serve")
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Unexpected error: {type(e).__name__}: {e}")
 
 def main():
     """Main CLI function."""
@@ -101,17 +211,19 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: tgpt [options] <your question>")
         print("Options:")
-        print("  -l              Give long, detailed answers")
-        print("  -m <model>      Specify Ollama model (default: llama3.2)")
+        print("  -l              Give long, detailed answers (opens in pager)")
+        print("  -m <model>      Specify Ollama model")
         print("  --list-models   Show available Ollama models")
+        print("  --debug         Print raw Ollama response chunks")
         print("  -h              Show this help message")
         print("\nExamples:")
         print("  tgpt 'What is Python?'                    # Short answer")
-        print("  tgpt -l 'What is Python?'                 # Long answer")
+        print("  tgpt -l 'What is Python?'                 # Long answer (paged)")
         print("  tgpt -m mistral 'What is Python?'         # Use specific model")
         sys.exit(1)
 
     long_answer = False
+    debug = False
     model = DEFAULT_MODEL
     query_parts = []
     skip_next = False
@@ -125,19 +237,20 @@ def main():
 
         if arg == "-l":
             long_answer = True
+        elif arg == "--debug":
+            debug = True
         elif arg == "-h":
             print("Usage: tgpt [options] <your question>")
             print("Options:")
-            print("  -l              Give long, detailed answers")
-            print("  -m <model>      Specify Ollama model (default: llama3.2)")
+            print("  -l              Give long, detailed answers (opens in pager)")
+            print("  -m <model>      Specify Ollama model")
             print("  --list-models   Show available Ollama models")
+            print("  --debug         Print raw Ollama response chunks")
             print("  -h              Show this help message")
             print("\nExamples:")
             print("  tgpt 'What is Python?'                    # Short answer (default)")
-            print("  tgpt -l 'What is Python?'                 # Long answer")
+            print("  tgpt -l 'What is Python?'                 # Long answer (paged)")
             print("  tgpt -m mistral 'Explain recursion'       # Use specific model")
-            print("\nBy default, tgpt gives brief, concise answers.")
-            print("Use -l flag for detailed explanations.")
             sys.exit(0)
         elif arg == "--list-models":
             models = get_available_models()
@@ -166,14 +279,13 @@ def main():
         print("Usage: tgpt [options] <your question>")
         sys.exit(1)
 
-    # Check Ollama is running before querying
     if not check_ollama_running():
         print(f"Error: Ollama is not running at {OLLAMA_BASE_URL}")
         print("Start it with: ollama serve")
         sys.exit(1)
 
     query = ' '.join(query_parts)
-    query_ai(query, model=model, long_answer=long_answer)
+    query_ai(query, model=model, long_answer=long_answer, debug=debug)
 
 if __name__ == "__main__":
     try:

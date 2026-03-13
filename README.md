@@ -11,69 +11,71 @@ A simple command-line interface to interact with local AI models from anywhere i
 - ⚡ **Fast**: Quick responses for terminal workflows
 - 🛡️ **Error Handling**: Helpful error messages and validation
 
-## Installation
+## Installation (Global)
 
 ### Prerequisites
 
-- Python 3.6 or higher (uses only standard library — no pip installs needed)
+- Python 3.8 or higher
 - [Ollama](https://ollama.com) installed and running
+- Git (for cloning) and a shell (Bash for Linux/macOS/WSL, Git Bash for Windows)
 
-### Step 1: Install Ollama
+### 1) Install Ollama
 
 ```bash
 # Linux / macOS
 curl -fsSL https://ollama.com/install.sh | sh
+# Windows: download the installer from https://ollama.com/download
 ```
 
-Or download from [ollama.com](https://ollama.com) for your platform.
-
-### Step 2: Pull a Model
+### 2) Pull a model
 
 ```bash
-# Pull the default model
 ollama pull qwen3-next:80b-cloud
-
-# Or any other model you prefer
-ollama pull mistral
-ollama pull llama3.2
+# or any other model: ollama pull mistral
 ```
 
-### Step 3: Start Ollama
+### 3) Start Ollama
 
 ```bash
 ollama serve
 ```
 
-> **Note**: On macOS and Windows, Ollama starts automatically after installation. On Linux, you may need to run `ollama serve` manually or set it up as a systemd service.
+> On macOS and Windows, Ollama usually starts automatically. On Linux, you may need `ollama serve` or a systemd service.
 
-### Step 4: Clone or Download
+### 4) Clone
 
 ```bash
 git clone https://github.com/Builder-Byte/TGPT
-cd terminal_gpt
+cd TGPT
 ```
 
-### Step 5: Make Script Executable
+### 5) Install globally with the updater
+
+The bundled updater handles Linux, macOS, WSL, and Windows (via Git Bash):
 
 ```bash
-chmod +x tgpt
+chmod +x update-tgpt.sh tgpt
+./update-tgpt.sh
 ```
 
-### Step 6: Install Globally
+What the updater does:
+- Linux/macOS: installs to `/usr/local/bin/tgpt` if writable (or via `sudo`), otherwise to `~/.local/bin/tgpt`.
+- Windows (Git Bash/MSYS/WSL): copies the script to `~/.local/bin/tgpt.py` and creates `tgpt.cmd` and `tgpt` shims in the same folder. Add `~/.local/bin` to your PATH for PowerShell/CMD/Git Bash.
 
-```bash
-# With sudo
-sudo ln -sf $(pwd)/tgpt /usr/local/bin/tgpt
+#### Manual Windows install (PowerShell)
+
+If you prefer not to run Bash on Windows:
+
+```powershell
+# From the repo root
+$target = "$env:USERPROFILE\.local\bin"
+New-Item -ItemType Directory -Force -Path $target | Out-Null
+Copy-Item tgpt "$target\tgpt.py"
+"@echo off`npython `%~dp0tgpt.py` %*" | Set-Content "$target\tgpt.cmd"
+[System.Environment]::SetEnvironmentVariable("Path", "$target;" + [System.Environment]::GetEnvironmentVariable("Path", "User"), "User")
 ```
 
-Alternatively, without sudo:
-
-```bash
-mkdir -p ~/.local/bin
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-ln -sf $(pwd)/tgpt ~/.local/bin/tgpt
-```
+Restart your shell, then run `tgpt -h`.
 
 ## Usage
 
@@ -213,9 +215,10 @@ tgpt -h
 ## File Structure
 
 ```
-terminal_gpt/
-├── tgpt        # Main CLI script
-└── README.md   # This file
+TGPT/
+├── tgpt            # Main CLI script
+├── update-tgpt.sh  # Cross-platform installer/updater
+└── README.md
 ```
 
 ## Updating
