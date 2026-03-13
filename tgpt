@@ -8,6 +8,16 @@ import json
 import urllib.request
 import urllib.error
 
+try:
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.live import Live
+    from rich.spinner import Spinner
+    RICH_AVAILABLE = True
+    console = Console()
+except ImportError:
+    RICH_AVAILABLE = False
+
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3-next:80b-cloud"
 
@@ -29,14 +39,12 @@ def check_ollama_running():
         return False
 
 def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
-    """Send query to Ollama and stream response."""
+    """Send query to Ollama, stream into buffer, then render as markdown."""
     try:
         if long_answer:
             final_prompt = f"Give a detailed, comprehensive explanation: {prompt}"
         else:
             final_prompt = f"Give a brief, concise answer in 1-2 sentences or a short paragraph: {prompt}"
-
-        print("🤔 Thinking...\n")
 
         payload = json.dumps({
             "model": model,
@@ -54,18 +62,28 @@ def query_ai(prompt, model=DEFAULT_MODEL, long_answer=False):
             method="POST"
         )
 
-        # Stream response — no timeout needed, chunks arrive continuously
-        with urllib.request.urlopen(req) as response:
-            for line in response:
-                if not line.strip():
-                    continue
-                chunk = json.loads(line.decode())
-                token = chunk.get("message", {}).get("content", "")
-                if token:
-                    print(token, end="", flush=True)
-                if chunk.get("done"):
-                    print()  # newline after final token
-                    break
+        full_response = []
+
+        # Stream into buffer while showing a spinner
+        spinner = Spinner("dots", text=" Thinking...") if RICH_AVAILABLE else None
+        with (Live(spinner, refresh_per_second=10) if RICH_AVAILABLE else open("/dev/null")) as live:
+            with urllib.request.urlopen(req) as response:
+                for line in response:
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line.decode())
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        full_response.append(token)
+                    if chunk.get("done"):
+                        break
+
+        # Render the full response
+        text = "".join(full_response)
+        if RICH_AVAILABLE:
+            console.print(Markdown(text))
+        else:
+            print(text)
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Request cancelled by user (Ctrl+C)")
